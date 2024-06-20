@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <unistd.h>
+#include <unistd.h>         ///< sleep function
 #include <time.h>
 #include <sys/time.h>
 #include <sys/socket.h>
@@ -17,6 +17,8 @@
 #include <sdns_json.h>
 #include <sdns_print.h>
 #include <cmdparser.h>
+
+#define BULKDNS_MAX_QUEUE_SIZE 1000000
 
 
 struct scanner_input {
@@ -50,7 +52,7 @@ int perform_lookup_tcp(char * tosend_buffer, size_t tosend_len, char ** toreceiv
 pthread_mutex_t lock;
 cqueue_ctx * qinput;
 cqueue_ctx * qoutput;
-unsigned long int cnt = 0;
+//unsigned long int cnt = 0;
 
 void dns_routine(void * item, struct scanner_input * si){
     char * domain_name = strdup(item);
@@ -150,9 +152,13 @@ void *worker_routine(void * ptr){
         pthread_mutex_lock(&lock);
         item = cqueue_get(qinput);
         if (item == NULL){
-            fprintf(si->ERROR, "ERROR: %s\n", qinput->errmsg);
+            // sleep 1 sec and continue
+            pthread_mutex_unlock(&lock);
+            sleep(1);
+            continue;
+            //fprintf(si->ERROR, "ERROR: %s\n", qinput->errmsg);
         }
-        cnt += 1;
+        //cnt += 1;
         pthread_mutex_unlock(&lock);
         if (item == NULL){
             // something is wrong
@@ -472,13 +478,17 @@ int main(int argc, char ** argv){
        si->INPUT = stdin;
     }else{
         si->INPUT = fopen(cmd.extra, "r");
+        if (si->INPUT == NULL){
+            perror("Error openning input file");
+            return 1;
+        }
     }
     struct thread_param * tp = (struct thread_param*) malloc(sizeof(struct thread_param));
     if (NULL == tp){
         fprintf(stderr, "Can not allocate memory for thread paremeters\n");
         return 1;
     }
-    qinput = cqueue_init(0);   // init unlimited queue
+    qinput = cqueue_init(BULKDNS_MAX_QUEUE_SIZE);   // init unlimited queue
     srand(time(NULL));
     char quit_msg[50];
     sprintf(quit_msg, "QUIT_%d%d", rand(), rand());
@@ -489,28 +499,8 @@ int main(int argc, char ** argv){
     char * line;
     PSTR str;
     char * line_stripped;
-    // add everything to the queue
-    while ((line = readline(si->INPUT)) != NULL){
-        str = str_init(line);
-        free(line);
-        line_stripped = str->str_strip(str, NULL);
-        str_free(str);
-        if (line_stripped == NULL)
-            continue;
-        if(strlen(line_stripped) == 0){
-            free(line_stripped);
-            continue;
-        }
-        if (cqueue_put(qinput, (void*) line_stripped) != 0){
-            fprintf(stderr, "Can not add entry: %s\n", line_stripped);
-            continue;
-        }
-    }
-    fclose(si->INPUT);
-    // add one quit message for each thread
-    for (int i=0; i<si->threads; ++i)
-        cqueue_put(qinput, (void*)quit_data);
     
+    // launch threads first
     if (pthread_mutex_init(&lock, NULL) != 0){
         printf("Can not create the lock\n");
         cqueue_free(qinput);
@@ -528,13 +518,64 @@ int main(int argc, char ** argv){
             return 2;
         }
     }
+    
+
+    int res_q = 0;
+    // add everything to the queue
+    while ((line = readline(si->INPUT)) != NULL){
+        str = str_init(line);
+        free(line);
+        line_stripped = str->str_strip(str, NULL);
+        str_free(str);
+        if (line_stripped == NULL)
+            continue;
+        if(strlen(line_stripped) == 0){
+            free(line_stripped);
+            continue;
+        }
+        do{
+            pthread_mutex_lock(&lock);
+            res_q = cqueue_put(qinput, (void*) line_stripped);
+            pthread_mutex_unlock(&lock);
+            if (res_q == 1){    // this means queue is full
+                sleep(5);
+                continue;
+            }
+            break;
+        }while(1);
+    }
+    //fprintf(stdout, "we are done with the input\n");
+    fclose(si->INPUT);
+    do{
+        pthread_mutex_lock(&lock);
+        int qs = cqueue_size(qinput);
+        //fprintf(stdout, "***************%d\n", BULKDNS_MAX_QUEUE_SIZE - qs);
+        if (BULKDNS_MAX_QUEUE_SIZE - qs < si->threads){
+            pthread_mutex_unlock(&lock);
+            //fprintf(stdout, "let's sleep for 3 seconds until queue has enough space for quit signature\n");
+            sleep(3);
+            continue;
+        }
+        pthread_mutex_unlock(&lock);
+        break;
+    }while(1);
+
+    // add one quit message for each thread
+    for (int i=0; i<si->threads; ++i){
+        pthread_mutex_lock(&lock);
+        if (cqueue_put(qinput, (void*)quit_data) != 0){
+            //fprintf(stderr, "Can not submit the quit message to queue\n");
+        }
+        pthread_mutex_unlock(&lock);
+    }
+       
 
     // now join the threads and fuck the lock
     for (int i=0; i<si->threads; ++i){
         pthread_join(threads[i], NULL);
     }
     pthread_mutex_destroy(&lock);
-    // for testing purpose, we assume that the second arg is the domain name
+
     free(threads);
     free(quit_data);
     cqueue_free(qinput);
