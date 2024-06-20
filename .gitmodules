@@ -1,0 +1,3 @@
+[submodule "sdns"]
+	path = sdns
+	url = https://github.com/maroofi/sdns.git
