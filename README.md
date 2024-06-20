@@ -29,7 +29,7 @@ make
 
 The compiled output is inside the `bin` directory.
 
-### Resource Record (RR) Supports:
+### Supported Resource Records (RR):
 
 Currently, bulkDNS supports the following 16 RRs:
 
@@ -56,9 +56,9 @@ All the RRs and EDNS0 are implemented based on the following RFCs (Some implemen
 [Help]
 
 Summary:
-Bulk DNS scanner based on sdns low-level DNS library.
+BulkDNS scanner based on sdns low-level DNS library.
 
-./scanner [OPTIONS] <INPUT|FILE>
+./bulkdns [OPTIONS] <INPUT|FILE>
 	            --udp-only 	Only query using UDP connection (Default will follow TCP)
 	            --set-do 	Set DNSSEC OK (DO) bit in queries (default is no DO)
 	            --noedns 	Do not support EDNS0 in queries (Default supports EDNS0)
@@ -78,7 +78,7 @@ Bulk DNS scanner based on sdns low-level DNS library.
 Providing the following input
 
 ```bash
-echo -n 'google.com' | ./scanner -t A -c IN -r 1.1.1.1
+echo -n 'google.com' | ./bulkdns -t A -c IN -r 1.1.1.1
 ```
 You will get the following JSON output:
 
@@ -153,7 +153,7 @@ However, if you plan to run bulkDNS with more threads, you may want to increase 
 
 example:
 ```bash
-echo -n 'hinfo-example.lookup.dog.' | ./scanner -r 1.1.1.1 -t HINFO
+echo -n 'hinfo-example.lookup.dog.' | ./bulkdns -r 1.1.1.1 -t HINFO
 ````
 
 answer
