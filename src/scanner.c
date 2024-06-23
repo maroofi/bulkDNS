@@ -446,6 +446,9 @@ int main(int argc, char ** argv){
     get_command_line(pargs, si);
     if (si->help){
         arg_show_help(&cmd, argc, argv);
+        arg_free(pargs);
+        free(si->resolver);
+        free(si);
         return 0;
     }
     if (si->port < 0 || si->port > 65535){
