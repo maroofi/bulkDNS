@@ -3,7 +3,7 @@
 
 Using **bulkDNS**, you can scan millions of domain names in a few minutes. The scanner has been designed to be fast with a very small footprint.
 
-The detailed output of the scanner is in JSON which can be parsed both by command-line or any programming language.
+The output of bulkDNS is a detailed JSON structure (example at the end of the page) which can be parsed both by command-line (e.g., by `jq`) or any programming language.
 
 
 ### How to compile
