@@ -24,6 +24,7 @@
 struct scanner_input {
     int udp_only;
     int set_do;
+    int set_nsid;
     int no_edns;
     int rr_type;
     int rr_class;
@@ -66,6 +67,17 @@ void dns_routine(void * item, struct scanner_input * si){
     }
     if (si->set_do && (!si->no_edns))
         dns->msg->additional->opt_ttl.DO = 1;
+    if (si->set_nsid && (!si->no_edns)){
+        sdns_opt_rdata * nsid = sdns_create_edns0_nsid();
+        if (nsid != NULL){
+            res = sdns_add_edns(dns, nsid);
+            if (res != 0){
+                sdns_free_context(dns);
+                sdns_free_opt_rdata(nsid);
+                return;
+            }
+        }
+    }
     res = sdns_to_wire(dns);
     if (res != 0){
         sdns_free_context(dns);
@@ -386,6 +398,7 @@ int convert_class_to_int(char * cls){
 void get_command_line(PARG_PARSED_ARGS pargs, struct scanner_input * si){
     si->udp_only = arg_is_tag_set(pargs, "udp_only")?1:0;
     si->set_do  = arg_is_tag_set(pargs, "set_do")?1:0;
+    si->set_nsid  = arg_is_tag_set(pargs, "set_nsid")?1:0;
     si->no_edns = arg_is_tag_set(pargs, "noedns")?1:0;
     si->resolver = arg_is_tag_set(pargs, "resolver")?strdup(arg_get_tag_value(pargs, "resolver")):strdup("1.1.1.1");
     if (arg_is_tag_set(pargs, "port")){
@@ -424,6 +437,7 @@ int main(int argc, char ** argv){
     ARG_CMD_OPTION cmd_option[] = {
         {.short_option=0, .long_option = "udp-only", .has_param = NO_PARAM, .help="Only query using UDP connection (Default will follow TCP)", .tag="udp_only"},
         {.short_option=0, .long_option = "set-do", .has_param = NO_PARAM, .help="Set DNSSEC OK (DO) bit in queries (default is no DO)", .tag="set_do"},
+        {.short_option=0, .long_option = "set-nsid", .has_param = NO_PARAM, .help="The packet has NSID in edns0", .tag="set_nsid"},
         {.short_option=0, .long_option = "noedns", .has_param = NO_PARAM, .help="Do not support EDNS0 in queries (Default supports EDNS0)", .tag="noedns"},
         {.short_option='t', .long_option = "type", .has_param = HAS_PARAM, .help="Resource Record type (Default is 'A')", .tag="rr_type"},
         {.short_option='c', .long_option = "class", .has_param = HAS_PARAM, .help="RR Class (IN, CH). Default is 'IN'", .tag="rr_class"},
