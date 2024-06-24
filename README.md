@@ -62,6 +62,7 @@ BulkDNS scanner based on sdns low-level DNS library.
 	            --udp-only 	Only query using UDP connection (Default will follow TCP)
 	            --set-do 	Set DNSSEC OK (DO) bit in queries (default is no DO)
 	            --noedns 	Do not support EDNS0 in queries (Default supports EDNS0)
+                --set-nsid 	The packet has NSID in edns0
 	            --threads=<param>	How many threads should be used (it's pthreads, and default is 300)
 	-t <param>, --type=<param>	Resource Record type (A, AAAA, NS, TXT, RRSIG, PTR, SOA, MX, SRV, CNAME, HINFO). Default is 'A'
 	-c <param>, --class=<param>	RR Class (IN, CH). Default is 'IN'
