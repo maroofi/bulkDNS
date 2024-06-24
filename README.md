@@ -36,7 +36,7 @@ Currently, bulkDNS supports the following 16 RRs:
 **A**, **AAAA**, **NS**, **RRSIG**, **SOA**, **MX**, **SRV**, **PTR**, **HINFO**, **TXT**, **CNAME**, **URI**,
 **NID**, **L32**, **L64**, **LP**
 
-It also supports **EDNS0** for queries and responses.
+It also supports adding **EDNS0** (**DNSSEC-OK** and **NSID**) to queries.
 
 All the RRs and EDNS0 are implemented based on the following RFCs (Some implemented partially):
 
@@ -49,7 +49,7 @@ All the RRs and EDNS0 are implemented based on the following RFCs (Some implemen
 - **RFC 7553**: The Uniform Resource Identifier (URI) DNS Resource Record
 - **RFC 7873**: Domain Name System (DNS) Cookies
 - **RFC 8914**: Extended DNS Errors
-
+- **RFC 5001**: DNS Name Server Identifier (NSID) Option
 
 ### List of Switches
 ```
