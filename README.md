@@ -1,4 +1,4 @@
-[![C/C++ CI](https://github.com/maroofi/bulkDNS/actions/workflows/c-cpp.yml/badge.svg?event=workflow_run)](https://github.com/maroofi/bulkDNS/actions/workflows/c-cpp.yml)
+[![C/C++ CI](https://github.com/maroofi/bulkDNS/actions/workflows/c-cpp.yml/badge.svg)](https://github.com/maroofi/bulkDNS/actions/workflows/c-cpp.yml)
 
 ### bulkDNS: A fast DNS scanner for large-scale Internet measurement
 
