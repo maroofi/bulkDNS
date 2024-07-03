@@ -215,6 +215,7 @@ int perform_lookup_udp(char * tosend_buffer, size_t tosend_len, char ** toreceiv
     }
     if (setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) != 0){
         fprintf(si->ERROR, "Error in setsockeopt() function\n");
+        close(sockfd);
         return 3;
     }
 
@@ -298,16 +299,16 @@ int perform_lookup_tcp(char * tosend_buffer, size_t tosend_len, char ** toreceiv
                            (uint8_t)recv_payload[1];
 
     received = 0;
-    char * receive_payload = (char*) malloc(to_allocate);
+    char * receive_payload = *toreceive_buffer;
     received = recv(sockfd, receive_payload, to_allocate, MSG_WAITALL);
     if (received < 0){  // we have socket error
         fprintf(si->ERROR, "Error reading from socket...\n");
         close(sockfd);
-        free(receive_payload);
         return 1;
     }
     *toreceive_len = to_allocate;
     *toreceive_buffer = receive_payload;
+    close(sockfd);
     return 0;   //success
 }
 
