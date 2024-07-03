@@ -8,9 +8,11 @@ on:
 
 jobs:
   build:
-
+    
     runs-on: ubuntu-latest
 
     steps:
+    - name: Use repo content
+      uses: actions/checkout@main
     - name: make
       run: make bulkdns
