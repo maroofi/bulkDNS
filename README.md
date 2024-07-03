@@ -1,10 +1,21 @@
-
 ### bulkDNS: A fast DNS scanner for large-scale Internet measurement
 
 Using **bulkDNS**, you can scan millions of domain names in a few minutes. The scanner has been designed to be fast with a very small footprint.
 
 The output of bulkDNS is a detailed JSON structure (example at the end of the page) which can be parsed both by command-line (e.g., by `jq`) or any programming language.
 
+### Menu
+
+* [How to compile bulkDNS](#How-to-compile)
+* [Supported Resource Records (RRs)](#Supported-Resource-Records)
+* [List of Switches](#List-of-Switches)
+* [Example Output](#Example-Output)
+* [Notes](#Notes)
+	* [A note on threads](#A-note-on-threads)
+	* [A note on names and conventions](#Names-and-output-convention)
+   	* [Hex representation of the output](#Hex-represantaion-of-the-output)
+* [FAQ](#FAQ)
+ 	
 
 ### How to compile
 
@@ -29,7 +40,7 @@ make
 
 The compiled output is inside the `bin` directory.
 
-### Supported Resource Records (RR):
+### Supported Resource Records
 
 Currently, bulkDNS supports the following 16 RRs:
 
@@ -59,18 +70,23 @@ Summary:
 BulkDNS scanner based on sdns low-level DNS library.
 
 ./bulkdns [OPTIONS] <INPUT|FILE>
-	            --udp-only 	Only query using UDP connection (Default will follow TCP)
-	            --set-do 	Set DNSSEC OK (DO) bit in queries (default is no DO)
-	            --noedns 	Do not support EDNS0 in queries (Default supports EDNS0)
-                --set-nsid 	The packet has NSID in edns0
+	            --udp-only 	        Only query using UDP connection (Default will follow TCP)
+	            --set-do 	        Set DNSSEC OK (DO) bit in queries (default is no DO)
+	            --noedns 	        Do not support EDNS0 in queries (Default supports EDNS0)
+                    --set-nsid 	        The packet has NSID in edns0
 	            --threads=<param>	How many threads should be used (it's pthreads, and default is 300)
-	-t <param>, --type=<param>	Resource Record type (A, AAAA, NS, TXT, RRSIG, PTR, SOA, MX, SRV, CNAME, HINFO). Default is 'A'
+	-t <param>, --type=<param>	Resource Record type (A, AAAA, NS, etc). Default is 'A'
 	-c <param>, --class=<param>	RR Class (IN, CH). Default is 'IN'
 	-r <param>, --resolver=<param>	Resolver IP address to send the query to (default 1.1.1.1)
 	-p <param>, --port=<param>	Resolver port number to send the query to (default 53)
 	-o <param>, --output=<param>	Output file name (default is the terminal with stdout)
 	-e <param>, --error=<param>	where to write the error (default is terminal with stderr)
-	-h ,         --help 	Print this help message
+	-h ,        --help 	        Print this help message
+
+	We currently supports the following RR:
+		A, AAAA, NS, RRSIG, SOA, MX, SRV, URI, PTR,
+		HINFO, TXT, CNAME, NID, L32, L64, LP
+	Supported DNS classes: IN, CH
 
 ```
 
@@ -129,6 +145,8 @@ We try to keep the output as close as possible to DNS RFC standards.
 
 ### Notes
 
+#### A note on threads
+
 * bulkDNS is capable of scanning 1,000,000 (1M) domain names in around 5 minutes with less than 1% of errors using default number of threads (300). That means you can
 scan the whole domain name system in less than one day.
 This makes it probably the most practical (and maybe fastest) DNS scanner. It does not have any requirements in terms of CPU or RAM. As all other network scanners,
@@ -142,9 +160,13 @@ make the scanner even slower (threads competing each other to acquire the lock).
 * If you are running the scanner on Linux, the maximum number of open files is 1024 by default which is three times more than the default number of threads in bulkDNS.
 However, if you plan to run bulkDNS with more threads, you may want to increase the number of open files using the `ulimit -n` commands.
 
-* The whole source code of the scanner is less than 600 lines and all in standard C. You can easily modify the source code to match your needs.
+
+#### Names and output convention
 
 * You can check the IANA standard DNS rcodes [here](https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-6)
+* We try to keep the output names as close to what you can find in RFCs. However, sometimes RFC names are __Bizarre__ and that's why some names are wierd!
+
+#### Hex represantaion of the output
 
 * For `HINFO` RR, the value of `os` and `cpu` will be encoded as hex. The reason is that these are not necessarily null-terminated strings.
 
@@ -184,3 +206,12 @@ answer
 In the above example the `cpu` is the hex represantation of `some-kinda-cpu` and os is the hex represantation of `some-kinda-os`.
 
 
+### FAQ
+1. Why another scanner?
+   - Because I feel like it
+1. Why not using CMake in the project?
+   - I don't know CMake
+2. Is there any similar project like this?
+   - The only comparable project to this one (that I'm aware of) is zmap/zdns. 
+3. Can I pass a domain name (e.g., `ns1.google.com` as the resolver)?
+   - No. The resolver must be an IPv4 address. We pass this value to `inet_addr()` function which accepts an IPv4.
