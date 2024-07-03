@@ -16,5 +16,7 @@ jobs:
       uses: actions/checkout@main
       with:
         submodules: true
+    - name: Install dependencies
+      run: sudo apt install -y libpthread-stubs0-dev libjansson-dev
     - name: make
       run: make bulkdns
