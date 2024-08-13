@@ -68,7 +68,7 @@ void dns_routine(void * item, struct scanner_input * si){
     if (si->set_do && (!si->no_edns))
         dns->msg->additional->opt_ttl.DO = 1;
     if (si->set_nsid && (!si->no_edns)){
-        sdns_opt_rdata * nsid = sdns_create_edns0_nsid();
+        sdns_opt_rdata * nsid = sdns_create_edns0_nsid(NULL, 0);
         if (nsid != NULL){
             res = sdns_add_edns(dns, nsid);
             if (res != 0){
