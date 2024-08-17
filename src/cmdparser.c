@@ -321,7 +321,7 @@ void arg_show_help(PARG_CMDLINE cmd, int argc, char ** argv){
     }
     fprintf(stdout, "\nWe currently supports the following RR:\n");
     fprintf(stdout, "\tA, AAAA, NS, RRSIG, SOA, MX, SRV, URI, PTR,\n");
-    fprintf(stdout, "\tHINFO, TXT, CNAME, NID, L32, L64, LP\n");
+    fprintf(stdout, "\tHINFO, TXT, CNAME, NID, L32, L64, LP, CAA\n");
     fprintf(stdout, "Supported DNS classes: IN, CH\n\n\n");
 }
 

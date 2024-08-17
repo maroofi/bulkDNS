@@ -44,10 +44,10 @@ The compiled output is inside the `bin` directory.
 
 ### Supported Resource Records
 
-Currently, bulkDNS supports the following 16 RRs:
+Currently, bulkDNS supports the following 17 RRs:
 
 **A**, **AAAA**, **NS**, **RRSIG**, **SOA**, **MX**, **SRV**, **PTR**, **HINFO**, **TXT**, **CNAME**, **URI**,
-**NID**, **L32**, **L64**, **LP**
+**NID**, **L32**, **L64**, **LP**, **CAA**
 
 It also supports adding **EDNS0** (**DNSSEC-OK** and **NSID**) to queries.
 
@@ -63,6 +63,7 @@ All the RRs and EDNS0 are implemented based on the following RFCs (Some implemen
 - **RFC 7873**: Domain Name System (DNS) Cookies
 - **RFC 8914**: Extended DNS Errors
 - **RFC 5001**: DNS Name Server Identifier (NSID) Option
+- **RFC 6844**: DNS Certification Authority Authorization (CAA) Resource Record
 
 ### List of Switches
 ```
@@ -87,7 +88,7 @@ BulkDNS scanner based on sdns low-level DNS library.
 
 	We currently supports the following RR:
 		A, AAAA, NS, RRSIG, SOA, MX, SRV, URI, PTR,
-		HINFO, TXT, CNAME, NID, L32, L64, LP
+		HINFO, TXT, CNAME, NID, L32, L64, LP, CAA
 	Supported DNS classes: IN, CH
 
 ```
