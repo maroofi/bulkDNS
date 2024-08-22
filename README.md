@@ -119,22 +119,22 @@ Bulk DNS scanner based on sdns low-level DNS library.
 
 ./bulkdns [OPTIONS] <INPUT|FILE>	
 
-	-t <param>, --type=<param>		Resource Record type (Default is 'A')
-	-c <param>, --class=<param>		RR Class (IN, CH). Default is 'IN'
+	-t <param>, --type=<param>	Resource Record type (Default is 'A')
+	-c <param>, --class=<param>	RR Class (IN, CH). Default is 'IN'
 	-r <param>, --resolver=<param>	Resolver IP address to send the query to (default 1.1.1.1)
-	-p <param>, --port=<param>		Resolver port number to send the query to (default 53)
-	-e <param>, --error=<param>		where to write the error (default is terminal with stderr)
+	-p <param>, --port=<param>	Resolver port number to send the query to (default 53)
+	-e <param>, --error=<param>	where to write the error (default is terminal with stderr)
 	-o <param>, --output=<param>	Output file name (default is the terminal with stdout)
-	--lua-script=<param>			Lua script to be used either for scan or server mode
-	--bind-ip=<param>			    IP address to bind (default 127.0.0.1 for scan mode, 0.0.0.0 for server-mode)
-	--timeout=<param>			    Timeout of the socket (default is 5 seconds)
-	--concurrency=<param>			How many concurrent requests should we send (default is 1000)
-	--udp-only				        Only query using UDP connection (Default will follow TCP)
-	--set-do				        Set DNSSEC OK (DO) bit in queries (default is no DO)
-	--set-nsid				        The packet has NSID in edns0
-	--noedns				        Do not support EDNS0 in queries (Default supports EDNS0)
-	--server-mode				    Run bulkDNS in server mode
-	-h, --help				        Print this help message
+	--lua-script=<param>		Lua script to be used either for scan or server mode
+	--bind-ip=<param>		IP address to bind (default 127.0.0.1 for scan mode, 0.0.0.0 for server-mode)
+	--timeout=<param>		Timeout of the socket (default is 5 seconds)
+	--concurrency=<param>		How many concurrent requests should we send (default is 1000)
+	--udp-only			Only query using UDP connection (Default will follow TCP)
+	--set-do			Set DNSSEC OK (DO) bit in queries (default is no DO)
+	--set-nsid			The packet has NSID in edns0
+	--noedns			Do not support EDNS0 in queries (Default supports EDNS0)
+	--server-mode			Run bulkDNS in server mode
+	-h, --help			Print this help message
 
 bulkDNS currently supports the following RRs:
 	A, AAAA, NS, RRSIG, SOA, MX, SRV, URI, PTR,
