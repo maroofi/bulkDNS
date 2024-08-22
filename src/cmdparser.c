@@ -294,34 +294,66 @@ void arg_free(ARG_PARSED_ARGS * parsed){
 
 void arg_show_help(PARG_CMDLINE cmd, int argc, char ** argv){
     fprintf(stdout, "[Help]\n\n");   
-    PARG_CMD_OPTION tmp = cmd->cmd_option;
-    const char * has_param = "<param>";
-    const char * no_param = "";
-    const char * check_param;
-    char equal = '=';
     fprintf(stdout, "Summary:\n");
     fprintf(stdout, "%s", cmd->summary);
     fprintf(stdout, "\n\n");
     fprintf(stdout, "%s [OPTIONS] ", argv[0]);
     fprintf(stdout, "%s\t", cmd->accept_file?"<INPUT|FILE>":"");
-    fprintf(stdout, "\n");
-    tmp = cmd->cmd_option;
-    while (tmp->tag != NULL){
-       check_param = tmp->has_param == 1?has_param:no_param;
-       equal = tmp->has_param == 1?'=':' ';
-       char shrt = tmp->short_option == 0?' ':tmp->short_option;
-       char dash = tmp->short_option == 0?' ':'-';
-       int has_shrt = tmp->short_option == 0?0:1;
-       char ddash[3] = {'-', '-', 0};
-       int put_ddash = strcmp(tmp->long_option, "") == 0?0:1;
-       char virgul = has_shrt && put_ddash?',':' ';
-       char * pddash = put_ddash?ddash:"\t";
-       fprintf(stdout, "\t%c%c %s%c %s%s%c%s\t%s\n",dash, shrt, has_shrt?check_param:"", virgul,pddash, tmp->long_option, equal, check_param, tmp->help);
-       tmp++;
-    }
-    fprintf(stdout, "\nWe currently supports the following RR:\n");
+    fprintf(stdout, "\n\n");
+
+    fprintf(stdout, "\t-t <param>, --type=<param>\t\t");
+    fprintf(stdout, "Resource Record type (Default is 'A')\n");
+
+    fprintf(stdout, "\t-c <param>, --class=<param>\t\t");
+    fprintf(stdout, "RR Class (IN, CH). Default is 'IN'\n");
+
+    fprintf(stdout, "\t-r <param>, --resolver=<param>\t\t");
+    fprintf(stdout, "Resolver IP address to send the query to (default 1.1.1.1)\n");
+
+    fprintf(stdout, "\t-p <param>, --port=<param>\t\t");
+    fprintf(stdout, "Resolver port number to send the query to (default 53)\n");
+
+    fprintf(stdout, "\t-e <param>, --error=<param>\t\t");
+    fprintf(stdout, "where to write the error (default is terminal with stderr)\n");
+
+    fprintf(stdout, "\t-o <param>, --output=<param>\t\t");
+    fprintf(stdout, "Output file name (default is the terminal with stdout)\n");
+
+    fprintf(stdout, "\t--lua-script=<param>\t\t\t");
+    fprintf(stdout, "Lua script to be used either for scan or server mode\n");
+
+    fprintf(stdout, "\t--bind-ip=<param>\t\t\t");
+    fprintf(stdout, "IP address to bind (default 127.0.0.1 for scan mode, 0.0.0.0 for server-mode)\n");
+
+    fprintf(stdout, "\t--timeout=<param>\t\t\t");
+    fprintf(stdout, "Timeout of the socket (default is 5 seconds)\n");
+
+    fprintf(stdout, "\t--concurrency=<param>\t\t\t");
+    fprintf(stdout, "How many concurrent requests should we send (default is 1000)\n");
+
+    fprintf(stdout, "\t--udp-only\t\t\t\t");
+    fprintf(stdout, "Only query using UDP connection (Default will follow TCP)\n");
+
+    fprintf(stdout, "\t--set-do\t\t\t\t");
+    fprintf(stdout, "Set DNSSEC OK (DO) bit in queries (default is no DO)\n");
+
+    fprintf(stdout, "\t--set-nsid\t\t\t\t");
+    fprintf(stdout, "The packet has NSID in edns0\n");
+
+    fprintf(stdout, "\t--noedns\t\t\t\t");
+    fprintf(stdout, "Do not support EDNS0 in queries (Default supports EDNS0)\n");
+
+    fprintf(stdout, "\t--server-mode\t\t\t\t");
+    fprintf(stdout, "Run bulkDNS in server mode\n");
+
+    fprintf(stdout, "\t-h, --help\t\t\t\t");
+    fprintf(stdout, "Print this help message\n");
+
+    fprintf(stdout, "\nbulkDNS currently supports the following RRs:\n");
     fprintf(stdout, "\tA, AAAA, NS, RRSIG, SOA, MX, SRV, URI, PTR,\n");
     fprintf(stdout, "\tHINFO, TXT, CNAME, NID, L32, L64, LP, CAA\n");
     fprintf(stdout, "Supported DNS classes: IN, CH\n\n\n");
+    fprintf(stdout, "Please report bugs to:\n");
+    fprintf(stdout, "\thttps://github.com/maroofi/bulkDNS\n\n");
 }
 

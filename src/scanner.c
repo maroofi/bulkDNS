@@ -13,7 +13,6 @@
 #include <arpa/inet.h>
 #include <sys/stat.h>
 
-
 #ifdef COMPILE_WITH_LUA
 #include <lua.h>
 #include <lauxlib.h>
@@ -29,14 +28,11 @@
 #include <scanner.h>
 
 
-// manual compile with:
-//
-
-
 
 /*****************static function definitions*******************/
 
 static inline void * bulkdns_malloc_or_abort(size_t n){
+    /**A simple wrapper on malloc to abort in case of allocation fails*/
     void * p = malloc(n);
     if (NULL == p)
         abort();
@@ -44,16 +40,21 @@ static inline void * bulkdns_malloc_or_abort(size_t n){
 }
 
 static char * bulkdns_mem_copy(char * data, unsigned long int len){
+    /**Copies a memory block of abort. Only for critical use cases.*/
     char * tmp = (char *) bulkdns_malloc_or_abort(len);
     memcpy(tmp, data, len);
     return tmp;
 }
 
+/*We use COMPILE_WITH_LUA macro because what we have inside the macro
+is only useful when we compile the code with Lua support.*/
 #ifdef COMPILE_WITH_LUA
 static char * bulkdns_mem_tcp_copy(char * data, unsigned long int len){
-    // this is the same as bulkdns_mem_copy() but adds two bytes at
-    // the beginning of the memory to show the length of the data.
-    // this is how TCP protocol works in DNS operation.
+    /* 
+       This is the same as bulkdns_mem_copy() but adds two bytes at
+       the beginning of the memory to show the length of the data.
+       This is how TCP protocol works in DNS operation.
+    */
     char * tmp = (char *) bulkdns_malloc_or_abort(len + 2);
     tmp[0] = (uint8_t)((len & 0xFFFF) >> 8);
     tmp[1] = (uint8_t)((len & 0xFF));
@@ -62,7 +63,7 @@ static char * bulkdns_mem_tcp_copy(char * data, unsigned long int len){
 }
 #endif
 
-/***************************************************************/
+/*********************End of static definitions*******************/
 
 
 
@@ -127,9 +128,13 @@ int main(int argc, char ** argv){
         fprintf(stderr, "Can not allocate memory for thread paremeters\n");
         return 1;
     }
+
     
     // init the input queue
-    tp->qinput = cqueue_init(BULKDNS_MAX_QUEUE_SIZE);   // init unlimited queue
+    tp->qinput = cqueue_init(BULKDNS_MAX_QUEUE_SIZE);
+
+    // init the TCP queue
+    tp->queue_tcp = cqueue_init(BULKDNS_MAX_QUEUE_SIZE);
 
     // randomize the DNS IDs
     srand(time(NULL));
@@ -143,13 +148,12 @@ int main(int argc, char ** argv){
     // we need to pass input switches to each thread
     tp->si = si;
 
-
     //read input file
     char * line;
     PSTR str;
     char * line_stripped;
-    
-    // launch the threads first
+
+    // init the mutex   
     if (pthread_mutex_init(&(tp->lock), NULL) != 0){
         fprintf(stderr, "ERROR: Can not initialize the mutex\n");
         cqueue_free(tp->qinput);
@@ -157,10 +161,26 @@ int main(int argc, char ** argv){
         return 1;
     }
 
-    pthread_t * threads = (pthread_t*) malloc(si->threads * sizeof(pthread_t));
-    for (int i=0; i< si->threads; ++i){
-        if (si->lua_file != NULL){
-            // this is lua-based custom scan scenario
+    // how many TCP threads we want to run?
+    int num_tcp_threads = 0;
+
+    // stores the array of TCP pthreads
+    pthread_t * tcp_threads = NULL;
+
+    int actual_num_threads = 0;
+    pthread_t * actual_threads_array = NULL;
+    int * sock_array = NULL;
+
+    // here is the case we want to use Lua. We launch normal threads
+    if (si->lua_file != NULL){
+
+#ifdef COMPILE_WITH_LUA
+        actual_num_threads = si->concurrency;
+        pthread_t * threads = (pthread_t*) malloc(si->concurrency * sizeof(pthread_t));      //TODO: fix this number
+        actual_threads_array = threads;
+#endif
+
+        for (int i=0; i< si->concurrency; ++i){
 #ifdef COMPILE_WITH_LUA
             if (pthread_create(&threads[i], NULL, scan_lua_worker_routine, (void*) tp) != 0){
                 fprintf(stderr, "ERROR: Can not create thread#%d\n", i);
@@ -172,20 +192,80 @@ int main(int argc, char ** argv){
             fprintf(stderr, "ERROR: You must compile bulkDNS with Lua to use this feature\n");
             fprintf(stderr, "INFO: To compile with Lua, use 'make with-lua'\n");
             exit(1);
+        
 #endif
-        }else{
+        }
+
+    }else{
+        // we don't have Lua option. We need to launch our concurrent model with select
+
+        // let's say the number of concurrent open ports is '--concurrency'
+        // each thread can handle 50 ports (max_select variable).
+        // Therefore, we need 'floor(concurrency / max_select) + (1 if concurrency % max_select > 0 else 0)'
+        
+        int concurrency = si->concurrency;
+        int max_select = BULKDNS_MAX_SOCKET_FOR_POLL;
+        
+        int int_part = concurrency / max_select;
+        int remainder = concurrency % max_select;
+        int num_threads = int_part + (remainder > 0?1:0);
+
+        // --concurrency param is the same as number of open ports.
+        // so we need to open 'concurrency' sockes.
+        sock_array = (int *) bulkdns_malloc_or_abort(concurrency * sizeof(int));
+        for (int i=0; i< concurrency; ++i){
+            sock_array[i] = init_udp_socket(si);
+            if (sock_array[i] < 0){
+                fprintf(stderr, "Can not initialize sockets....\n");
+                for (int j=0; j<i; ++j){
+                    close(sock_array[j]);
+                    //TODO: do other free() here
+                    exit(1);
+                }
+            }
+        }
+        // we have all the sockets initialized. Let's init our threads.
+        actual_num_threads = num_threads;
+        pthread_t * threads = (pthread_t*) malloc((num_threads) * sizeof(pthread_t));
+        actual_threads_array = threads;
+        
+        for (int i=0; i< num_threads; ++i){
+            scan_mode_receiver_param * tmp_tp = bulkdns_malloc_or_abort(sizeof(scan_mode_receiver_param));
+            tmp_tp->tp = tp;
+            if (remainder > 0)
+                tmp_tp->num_sock = i == num_threads -1?remainder:max_select;
+            else
+                tmp_tp->num_sock = max_select;
+            tmp_tp->sock_list = sock_array + (i * max_select);
             // this is a normal bulkDNS scan option
-            if (pthread_create(&threads[i], NULL, scan_worker_routine, (void*) tp) != 0){
+            if (pthread_create(&threads[i], NULL, scan_receiver_routine, (void*) tmp_tp) != 0){
                 fprintf(stderr, "ERROR: Can not create thread#%d\n", i);
                 free(quit_data);
                 cqueue_free(tp->qinput);
+                cqueue_free(tp->queue_tcp);
+                return 2;
+            }
+        }
+        // we should also run some threads to handle TCP connections
+        // I guess two is enough but we can increase it dynamically based
+        // on the number of TCP hits....
+        num_tcp_threads = (10 * actual_num_threads / 100) > 1?(10 * actual_num_threads / 100):1 ;
+        tcp_threads = (pthread_t*) malloc((num_tcp_threads) * sizeof(pthread_t));
+        for (int i=0; i< num_tcp_threads; ++i){
+            if (pthread_create(&(tcp_threads[i]), NULL, tcp_routine_handler, (void*) tp) != 0){
+                fprintf(stderr, "ERROR: Can not create TCP thread#%d\n", i);
+                free(quit_data);
+                cqueue_free(tp->qinput);
+                cqueue_free(tp->queue_tcp);
                 return 2;
             }
         }
     }
     
+    
     int res_q = 0;
-    // add everything to the queue
+    // we start adding input lines to the queue. If we reach
+    // the max size of the queue, we sleep for 5 seconds and continue.
     while ((line = readline(si->INPUT)) != NULL){
         str = str_init(line);
         free(line);
@@ -210,13 +290,16 @@ int main(int argc, char ** argv){
     }
 
     fclose(si->INPUT);
+
+    // we want to add the quit_message to queue. One for each thread.
+    // However, we need to make sure our queue has enough space. So we
+    // loop and sleep until we have enough space. This is a very poor code
+    // and must be changed.
     do{
         pthread_mutex_lock(&(tp->lock));
         int qs = cqueue_size(tp->qinput);
-
-        if (BULKDNS_MAX_QUEUE_SIZE - qs < si->threads){
+        if (BULKDNS_MAX_QUEUE_SIZE - qs < actual_num_threads){
             pthread_mutex_unlock(&(tp->lock));
-            //fprintf(stdout, "let's sleep for 3 seconds until queue has enough space for quit signature\n");
             sleep(3);
             continue;
         }
@@ -225,40 +308,63 @@ int main(int argc, char ** argv){
     }while(1);
 
     // add one quit message for each thread
-    for (int i=0; i<si->threads; ++i){
+    for (int i=0; i<actual_num_threads; ++i){   // in fact, we need to only send it to sender threads
+                                                // but now we are sending it to all threads.
         pthread_mutex_lock(&(tp->lock));
         if (cqueue_put(tp->qinput, (void*)quit_data) != 0){
             // it's almost impossible to fail here but still need more considerations
-            //fprintf(stderr, "Can not submit the quit message to queue\n");
+            // What we should do? :-D
         }
         pthread_mutex_unlock(&(tp->lock));
     }
 
     // join the threads and destroy the lock since we are done
-    for (int i=0; i<si->threads; ++i){
-        pthread_join(threads[i], NULL);
+    for (int i=0; i<actual_num_threads; ++i){
+        pthread_join(actual_threads_array[i], NULL);
     }
+    
+    // let's join TCP threads
+    // fprintf(stderr, "Let's join TCP threads....\n");
+    for (int i=0; i<num_tcp_threads; ++i){
+        pthread_join(tcp_threads[i], NULL);
+    }
+
     pthread_mutex_destroy(&(tp->lock));
 
     // free the remaining memory parts
-    free(threads);
+    free(actual_threads_array);
+    free(tcp_threads);
+    
+
+    // we allocated heap memory for 'quit_data'
     free(quit_data);
+
+    void * dummy;
+
+    // we need to empty the queue before freeing its memory
+    while((dummy = cqueue_get(tp->qinput)) != NULL);
     cqueue_free(tp->qinput);
+
+    while((dummy = cqueue_get(tp->queue_tcp)) != NULL);
+    cqueue_free(tp->queue_tcp);
+
+    // we used strdup() for 'resolver', 'bind_ip' and 'lua_file'
     free(si->resolver);
     free(si->bind_ip);
     free(si->lua_file);
 
     // close it if it's not standard input/output/error
-    if (si->ERROR != stderr){
+    if (si->ERROR != stderr)
         fclose(si->ERROR);
-    }
     if (si->OUTPUT != stdout)
         fclose(si->OUTPUT);
 
+    // These were also allocated by heap.
+    free(sock_array);
     free(si);
     free(tp);
 
-    // we are done when we are done! (Ben)
+    /*We are done when we are done! (Ben)*/
 }
 
 
@@ -266,12 +372,341 @@ int main(int argc, char ** argv){
 /***************** Functions related to buldDNS scan mode ******************/
 /***************************************************************************/
 
-void dns_routine_scan(void * item, struct scanner_input * si, char * mem_result){
-    char * domain_name = strdup(item);
+void * tcp_routine_handler(void * ptr){
+    // handle TCP connections
+    struct thread_param * tp = (struct thread_param *)ptr;
+    char * mem = bulkdns_malloc_or_abort(65535);
+    void * item = NULL;
+
+    while (1){
+        pthread_mutex_lock(&(tp->lock));
+        item = cqueue_get(tp->queue_tcp);
+        pthread_mutex_unlock(&(tp->lock));
+        if (item == NULL){
+            // sleep 1 sec and continue    
+            sleep(1);
+            continue;
+            //fprintf(si->ERROR, "ERROR: %s\n", qinput->errmsg);
+        }
+        
+        if (item == NULL){
+            // something is wrong. we should never be here.
+            fprintf(tp->si->ERROR, "We should never have NULL item in the queue!!!!!\n");
+            // just quit the thread
+            return NULL;
+        }
+        if (strcmp((char*) item, tp->quit_data) == 0){
+            //fprintf(stderr, "We have received a quit message in thread#%ld\n", pthread_self());
+            // or break and close them after while-loop
+            break;
+        }
+        // do the TCP lookup and print out the output
+        // item is a domain name
+        char * domain_name = (char*)item;
+        sdns_context * dns = sdns_init_context();
+        if (NULL == dns)
+            continue;
+        int res = sdns_make_query(dns, tp->si->rr_type, tp->si->rr_class, domain_name, ~(tp->si->no_edns));
+        if (res != 0){
+            fprintf(stderr, "Can not make a query packet for TCP....\n");
+            sdns_free_context(dns);
+            continue;
+        }
+        if (tp->si->set_do && (!(tp->si->no_edns)))
+            dns->msg->additional->opt_ttl.DO = 1;
+        if (tp->si->set_nsid && (!(tp->si->no_edns))){
+            sdns_opt_rdata * nsid = sdns_create_edns0_nsid(NULL, 0);
+            if (nsid != NULL){
+                res = sdns_add_edns(dns, nsid);
+                if (res != 0){
+                    sdns_free_context(dns);
+                    sdns_free_opt_rdata(nsid);
+                    continue;
+                }
+            }
+        }
+        res = sdns_to_wire(dns);
+        if (res != 0){
+            fprintf(stderr, "Can not make a to_wire packet for TCP....\n");
+            sdns_free_context(dns);
+            continue;
+        }
+        size_t to_receive = 0;
+        res = perform_lookup_tcp(dns->raw, dns->raw_len, &mem, &to_receive, tp->si);
+        sdns_free_context(dns);
+        if (res != 0){
+            // TODO:we have timeout or any other types of error. we need to send it to output
+            continue;
+        }
+        sdns_context * dns_tcp_response = sdns_init_context();
+        if (NULL == dns_tcp_response){
+            continue;
+        }
+        dns_tcp_response->raw = mem;
+        dns_tcp_response->raw_len = to_receive;
+        res = sdns_from_wire(dns_tcp_response);
+        if (res != 0){
+            dns_tcp_response->raw = NULL;
+            sdns_free_context(dns_tcp_response);
+            continue;
+        }
+        char * dmp = sdns_json_dns_string(dns_tcp_response);
+        fprintf(tp->si->OUTPUT, "%s\n", dmp);
+        free(dmp);
+        dns_tcp_response->raw = NULL;
+        sdns_free_context(dns_tcp_response);
+        continue;
+    }
+    free(mem);
+    return NULL;
+}
+
+
+void * read_item_from_queue(struct thread_param * tp){
+    // Safe routine to read from input-queue and return the item.
+    // if the queue is empty, wait until there is an entry.
+    // if we receive quit_message in queue, we return NULL
+    void * item = NULL;
+    while (1){
+        pthread_mutex_lock(&(tp->lock));
+        item = cqueue_get(tp->qinput);
+        pthread_mutex_unlock(&(tp->lock));
+        if (item == NULL){
+            // sleep 1 sec and continue
+            sleep(1);
+            continue;
+            //fprintf(si->ERROR, "ERROR: %s\n", qinput->errmsg);
+        }
+        
+        if (item == NULL){
+            // something is wrong. we should never be here.
+            fprintf(tp->si->ERROR, "We should never have NULL item in the queue!!!!!\n");
+            // just quit the thread
+            return NULL;
+        }
+        if (strcmp((char*) item, tp->quit_data) == 0){
+            //fprintf(stderr, "We have received a quit message in thread#%ld\n", pthread_self());
+            // or break and close them after while-loop
+            return NULL;
+        }
+        return item;
+    }
+}
+
+void * scan_receiver_routine(void * ptr){
+    scan_mode_receiver_param * smrp = (scan_mode_receiver_param*) ptr;
+    struct thread_param * tp = (struct thread_param*) smrp->tp;
+    
+    // fprintf(stderr, "receiver_thread\n");
+    // each thread handle around 50 sockets for receiving data from
+    // the resolver and sending data to resolver.
+    // if the request needs TCP connection (truncated), we submit it to another
+    // queue for TCP request. Otherwise, print out the result and continue
+    
+    int nfds = smrp->num_sock;
+    struct pollfd * pfds;
+    pfds = calloc(nfds, sizeof(struct pollfd));
+    if (NULL == pfds){
+        fprintf(stderr, "Can not allocate memory for polling\n");
+        exit(1);
+    }
+    // fill the structures with socket
+    for (int i=0; i< nfds; ++i){
+        pfds[i].fd = smrp->sock_list[i];
+        pfds[i].events = POLLIN;
+        //pfds[i].events |= POLLOUT;
+    }
+    char * mem_send = bulkdns_malloc_or_abort(65535);
+    char * mem_recv = bulkdns_malloc_or_abort(65535);
+
+
+    struct sockaddr_in server;
+    server.sin_port = htons(tp->si->port);
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = inet_addr(tp->si->resolver);
+    scan_mode_worker_item smwi = {.item=NULL, .udp_sock=-1, .server=server};
+    void * item = NULL;
+    int ready;      // result of poll() goes here
+
+    cqueue_ctx * ready_to_send = cqueue_init(nfds);
+    for (int i=0; i<nfds; ++i){
+        cqueue_put(ready_to_send, (void*)(&(smrp->sock_list[i])));
+    }
+    int quit = 0;
+    while (1){
+        if (item == NULL && quit == 0){
+            item = read_item_from_queue(tp);
+            if (item == NULL)
+                quit = 1;
+        }
+
+        if (item != NULL){
+            void * sock_to_send = (cqueue_get(ready_to_send));
+            if (sock_to_send != NULL){
+                // we have a socket to send data to
+                int sock = *((int *)sock_to_send);
+                smwi.item = item;
+                smwi.udp_sock = sock;
+                dns_routine_scan(&smwi, tp->si, mem_send);
+                //fprintf(stderr, "Sending %s to %d\n", (char*)item, sock);
+                free(item);
+                item = NULL;
+                continue;
+            }
+        }
+        ready = poll(pfds, nfds, tp->si->timeout * 1000);
+        if (ready == -1){
+            // this is an error
+            perror("ERROR in poll()");
+            exit(1);
+        }
+
+        if (ready == 0 ){
+            // fprintf(stderr, "POLL() function timedout.....\n");
+            if (quit == 1){
+                break;
+            }else{
+                //TODO: WE NEED TO ADD ALL THE SOCKETS TO READY_TO_SEND?
+                // add all the sockets to ready_to_send state
+                void * dummy;
+                while ((dummy = cqueue_get(ready_to_send)) != NULL);
+                for (int i=0; i< nfds; ++i){
+                    cqueue_put(ready_to_send, (void*)(&(smrp->sock_list[i])));
+                }
+                continue;
+            }
+        }
+        //fprintf(stderr, "*********We have socket to read.....%d\n", ready);
+        // this one is just for reading
+        for (int j=0; j < nfds; ++j){
+            if (pfds[j].revents == 0)
+                continue;
+            if (pfds[j].revents & POLLIN){
+                // we are ready to read
+                handle_read_socket(pfds[j].fd, mem_recv, tp);
+                cqueue_put(ready_to_send, (void*)(&(pfds[j].fd)));
+                continue;
+            }else if(pfds[j].revents & POLLNVAL){
+                // fprintf(stderr, "Apparently socket is closed (%d)\n", pfds[j].fd);
+                continue;
+            }else{
+                // fprintf(stderr, "we have another event: %d\n", pfds[j].revents);
+            }
+            // we don't care about other cases
+        }
+    }
+    // fprintf(stderr, "Done with the thread routine.... %d\n", num_item_received);
+    free(item);
+    free(mem_send);
+    free(mem_recv);
+    while ((item = cqueue_get(ready_to_send)) != NULL);
+    cqueue_free(ready_to_send);
+    // close all the sockets that are open
+    for (int i=0; i<nfds; ++i){
+        close(smrp->sock_list[i]);
+    }   
+    free(pfds);
+    free(ptr);
+    while (1){
+        pthread_mutex_lock(&(tp->lock));
+        quit = cqueue_put(tp->queue_tcp, (void*)tp->quit_data);
+        pthread_mutex_unlock(&(tp->lock));
+        if (quit == 0){
+            break;
+        }
+    }
+    return NULL;
+}
+
+void handle_read_socket(int sockfd, char * mem_result, struct thread_param * tp){ 
+    struct sockaddr_in server;
+    unsigned int from_size = 0;
+    ssize_t received = recvfrom(sockfd, (void*)mem_result, 65535, 0, (struct sockaddr*)&server, &from_size);
+    if (received == -1){
+        perror("Error receive=-1");
+        //fprintf(si->ERROR, "Error in receive function\n");
+        return;
+    }
+    if (received == 0){
+        perror("Error receive=0");
+        return;
+    }
+    
+    sdns_context * dns_udp_response = sdns_init_context();
+    dns_udp_response->raw = mem_result;
+    dns_udp_response->raw_len = received;
+    
+    int res = sdns_from_wire(dns_udp_response);
+    if (res != 0){
+        dns_udp_response->raw = NULL;
+        sdns_free_context(dns_udp_response);
+        return;
+    }
+    
+    if (tp->si->udp_only){
+        char * dmp = sdns_json_dns_string(dns_udp_response);
+        fprintf(tp->si->OUTPUT, "%s\n", dmp);
+        free(dmp);
+        dns_udp_response->raw = NULL;
+        sdns_free_context(dns_udp_response);
+        return;
+    }
+    // we are here, it means we need to check the truncation 
+    // for a possible TCP request
+    if (dns_udp_response->msg->header.tc == 1){
+        
+        
+        int res;
+        char * domain = dns_udp_response->msg->question.qname == NULL?NULL:strdup(dns_udp_response->msg->question.qname);
+        if (domain == NULL)
+            return;
+        dns_udp_response->raw = NULL;
+        sdns_free_context(dns_udp_response);
+        while (1){
+            pthread_mutex_lock(&(tp->lock));
+            res = cqueue_put(tp->queue_tcp, (void*)(domain));
+            pthread_mutex_unlock(&(tp->lock));
+            if (res != 0){
+                sleep(1);
+                continue;
+            }else{
+                break;
+            }
+        }
+        return;
+    }else{
+        char * dmp = sdns_json_dns_string(dns_udp_response);
+        fprintf(tp->si->OUTPUT, "%s\n", dmp);
+        free(dmp);
+        dns_udp_response->raw = NULL;
+        sdns_free_context(dns_udp_response); 
+        return;
+    }
+}
+
+int udp_socket_send(char * tosend_buffer, size_t tosend_len, int sockfd, struct sockaddr_in server){
+
+    ssize_t sent = 0;
+    sent = sendto(sockfd, tosend_buffer, tosend_len, 0, (struct sockaddr *)&server, sizeof(server));
+    if (sent == -1){  //error
+        perror("error");
+        fprintf(stderr, "Error in sendto()\n");
+        return 4;
+    }
+    if (sent == 0){
+        fprintf(stderr, "Can not send the data to the server\n");
+        return 5;
+    }
+    return 0;   // success
+}
+
+void dns_routine_scan(scan_mode_worker_item * smwi, struct scanner_input * si, char * mem_result){
+
+    char * domain_name = strdup((char*)smwi->item);
     sdns_context * dns = sdns_init_context();
     if (NULL == dns)
         return;
-    int res = sdns_make_query(dns, si->rr_type, si->rr_class, domain_name, ~si->no_edns);
+    int res = sdns_make_query(dns, si->rr_type, si->rr_class, domain_name, ~(si->no_edns));
     if (res != 0){
         sdns_free_context(dns);
         return;
@@ -294,69 +729,12 @@ void dns_routine_scan(void * item, struct scanner_input * si, char * mem_result)
         sdns_free_context(dns);
         return;
     }
-    size_t result_len = 65535;
-    res = perform_lookup_udp(dns->raw, dns->raw_len, &mem_result, &result_len, si);
-    if (res != 0){
-        sdns_free_context(dns);
-        return;
-    }
-    sdns_context * dns_udp_response = sdns_init_context();
-    dns_udp_response->raw = mem_result;
-    dns_udp_response->raw_len = result_len;
-    res = sdns_from_wire(dns_udp_response);
-    if (res != 0){
-        sdns_free_context(dns);
-        dns_udp_response->raw = NULL;
-        sdns_free_context(dns_udp_response);
-        return;
-    }
-    if (si->udp_only){
-        sdns_free_context(dns);
-        char * dmp = sdns_json_dns_string(dns_udp_response);
-        fprintf(si->OUTPUT, "%s\n", dmp);
-        free(dmp);
-        dns_udp_response->raw = NULL;
-        sdns_free_context(dns_udp_response);
-        return;
-    }
-    if (dns_udp_response->msg->header.tc == 1){
-        dns_udp_response->raw = NULL;
-        dns_udp_response->raw_len = 0;
-        sdns_free_context(dns_udp_response);
-        result_len = 65535;
-        res = perform_lookup_tcp(dns->raw, dns->raw_len, &mem_result, &result_len, si);
-        sdns_free_context(dns);
-        if (res != 0){  // we got TCP error
-            return;
-        }
-        sdns_context * dns_tcp_response = sdns_init_context();
-        if (NULL == dns_tcp_response){
-            return;
-        }
-        dns_tcp_response->raw = mem_result;
-        dns_tcp_response->raw_len = result_len;
-        res = sdns_from_wire(dns_tcp_response);
-        if (res != 0){
-            dns_tcp_response->raw = NULL;
-            sdns_free_context(dns_tcp_response);
-            return;
-        }
-        char * dmp = sdns_json_dns_string(dns_tcp_response);
-        fprintf(si->OUTPUT, "%s\n", dmp);
-        free(dmp);
-        dns_tcp_response->raw = NULL;
-        sdns_free_context(dns_tcp_response);
-        return;
-    }else{
-        sdns_free_context(dns);
-        char * dmp = sdns_json_dns_string(dns_udp_response);
-        fprintf(si->OUTPUT, "%s\n", dmp);
-        free(dmp);
-        dns_udp_response->raw = NULL;
-        sdns_free_context(dns_udp_response);
-        return;
-    }
+    
+    res = udp_socket_send(dns->raw, dns->raw_len, smwi->udp_sock, smwi->server);
+    sdns_free_context(dns);
+    return;
 }
+    
 
 
 #ifdef COMPILE_WITH_LUA
@@ -394,15 +772,14 @@ void * scan_lua_worker_routine(void * ptr){
         // as our queue is not thread-safe, we have to lock it
         pthread_mutex_lock(&(tp->lock));
         item = cqueue_get(tp->qinput);
+        pthread_mutex_unlock(&(tp->lock));
         if (item == NULL){
             // sleep 1 sec and continue
-            pthread_mutex_unlock(&(tp->lock));
             sleep(1);
             continue;
             //fprintf(si->ERROR, "ERROR: %s\n", qinput->errmsg);
         }
         //cnt += 1;
-        pthread_mutex_unlock(&(tp->lock));
         if (item == NULL){
             // something is wrong. we should never be here.
             fprintf(stderr, "We should never have NULL item in the queue!!!!!\n");
@@ -456,105 +833,84 @@ void lua_dns_routine_scan(void){
 }
 #endif
 
+int init_udp_socket(struct scanner_input * si){
 
-void *scan_worker_routine(void * ptr){
-    // this will be called by several threads in non-custom scan mode
-    // ptr is a structure of type thread_param
-    void * item;
-    struct thread_param * tp = (struct thread_param*)ptr;
-    struct scanner_input * si = tp->si;
-    char * mem_result = (char*) bulkdns_malloc_or_abort(65535);
-    while (1){
-        // loop forever until item is "quit"
-        // as our queue is not thread-safe, we have to lock it
-        pthread_mutex_lock(&(tp->lock));
-        item = cqueue_get(tp->qinput);
-        if (item == NULL){
-            // sleep 1 sec and continue
-            pthread_mutex_unlock(&(tp->lock));
-            sleep(1);
-            continue;
-            //fprintf(si->ERROR, "ERROR: %s\n", qinput->errmsg);
-        }
-        //cnt += 1;
-        pthread_mutex_unlock(&(tp->lock));
-        if (item == NULL){
-            // something is wrong. we should never be here.
-            fprintf(si->ERROR, "We should never have NULL item in the queue!!!!!\n");
-            // just quit the thread
-            free(mem_result);
-            return NULL;
-        }
-        if (strcmp((char*) item, tp->quit_data) == 0){
-            //printf("We have received a quit message in thread#%ld\n", pthread_self());
-            free(mem_result);
-            return NULL;
-        }
-        // do whatever you want with the item
-        dns_routine_scan(item, si, mem_result);
-
-        // item is just a char* pointer (one stripped line of the input file)
-        free(item);
+    struct timeval tv = {.tv_sec = 0, .tv_usec = 100};
+    // bind the socket to a port randomly but keep it until the 
+    // end of the scan. This is bad practice but I guess increase the
+    // scan speed.
+    struct sockaddr_in local;
+    local.sin_family = AF_INET;
+    local.sin_port = 0;     // this makes the OS choose the port for us
+    if (inet_pton(AF_INET, (const char *)si->bind_ip, &(local.sin_addr.s_addr)) != 1){
+        fprintf(si->ERROR, "Can not convert the provided IP address\n");
+        return -1;
     }
-    free(mem_result);
-    return NULL;
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd == -1){
+        fprintf(si->ERROR, "Error in creating socket\n");
+        return -1;
+    }
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) != 0){
+        fprintf(si->ERROR, "Error in setsocketopt\n");
+        close(sockfd);
+        return -2;
+    }
+    
+    int enable_reuseaddr = 1;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &enable_reuseaddr, sizeof(int)) < 0){
+        perror("Error making socket reusable");
+        close(sockfd);
+        exit(1);
+    }
+    if (bind(sockfd, (struct sockaddr *)&local, sizeof(local)) != 0){
+        close(sockfd);
+        perror("Error in binding socket");
+        return -3;
+    }
+    return sockfd;
 }
 
+
 int perform_lookup_udp(char * tosend_buffer, size_t tosend_len, char ** toreceive_buffer,
-                       size_t * toreceive_len, struct scanner_input * si){
+                       size_t * toreceive_len, struct scanner_input * si, int sockfd){
     //char buffer[256] = {0x00};
     //char * error = buffer;
-    struct timeval tv = {.tv_sec = si->timeout, .tv_usec = 0};
     struct sockaddr_in server;
     unsigned int from_size;
     server.sin_port = htons(si->port);
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = inet_addr(si->resolver);
-    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sockfd == -1){
-        close(sockfd);
-        fprintf(si->ERROR, "Error in creating socket\n");
-        return 1;
-    }
-    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) != 0){
-        fprintf(si->ERROR, "Error in setsocketopt\n");
-        close(sockfd);
-        return 2;
-    }
-    if (setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) != 0){
-        fprintf(si->ERROR, "Error in setsockeopt() function\n");
-        close(sockfd);
-        return 3;
-    }
-
+    
     ssize_t sent = 0;
+    
     sent = sendto(sockfd, tosend_buffer, tosend_len, 0, (struct sockaddr *)&server, sizeof(server));
     if (sent == -1){  //error
+        perror("error");
         fprintf(si->ERROR, "Error in sendto()\n");
-        close(sockfd);
         return 4;
     }
     if (sent == 0){
         fprintf(si->ERROR, "Can not send the data to the server\n");
-        close(sockfd);
         return 5;
     }
+    
     // now let's receive the data
     ssize_t received = 0;
                                                     
     from_size = 0;
-    received = recvfrom(sockfd, *toreceive_buffer, 65535, MSG_WAITALL, (struct sockaddr*)&server, &from_size);
+    received = recvfrom(sockfd, *toreceive_buffer, 65535, 0, (struct sockaddr*)&server, &from_size);
     if (received == -1){
-        close(sockfd);
+        //perror("Error receive=-1");
         //fprintf(si->ERROR, "Error in receive function\n");
         return 2;
     }
     if (received == 0){
-        close(sockfd);
+        //perror("Error receive=0");
         return 2;
     }
+    
     *toreceive_len = received;
-    close(sockfd);
     return 0;
 }
 
@@ -705,7 +1061,6 @@ int convert_class_to_int(char * cls){
 
 
 
-
 /************************************************************************************/
 /**************** Functions from here are related to server mode *******************/
 /************************************************************************************/
@@ -804,6 +1159,8 @@ void server_mode_process_input_udp(server_mode_queue_data * cqd, lua_State * L){
     // call.
     // we analyze the result and return back to C code.
     
+    // make sure the stack is empty before each call as we only init L one time
+    lua_settop(L, 0);
     if (lua_getglobal(L, "main") != LUA_TFUNCTION){
         fprintf(stdout, "No 'main' function detected in Lua script\n");
         return;
@@ -1241,7 +1598,10 @@ void server_mode_to_log(const char * msg, FILE * fd){
 
 int initial_check_command_line(struct scanner_input * si, PARG_CMDLINE cmd){
     // the function returns -1 in case of error and 0 in case of success
-
+    if (si->concurrency < 0 || si->concurrency == 0){
+        fprintf(stderr, "Concurrency param must be greater than zero!\n");
+        return -1;      // error
+    }
     // check if the port number is valid
     if (si->port < 0 || si->port > 65535){
         fprintf(stderr, "Wrong port number specified\n");
@@ -1317,7 +1677,7 @@ PARG_CMDLINE create_command_line_arguments(){
         {.short_option='t', .long_option = "type", .has_param = HAS_PARAM, .help="Resource Record type (Default is 'A')", .tag="rr_type"},
         {.short_option='c', .long_option = "class", .has_param = HAS_PARAM, .help="RR Class (IN, CH). Default is 'IN'", .tag="rr_class"},
         {.short_option='r', .long_option = "resolver", .has_param = HAS_PARAM, .help="Resolver IP address to send the query to (default 1.1.1.1)", .tag="resolver"},
-        {.short_option=0, .long_option = "threads", .has_param = HAS_PARAM, .help="How many threads should be used (it's pthreads, and default is 300)", .tag="threads"},
+        {.short_option=0, .long_option = "concurrency", .has_param = HAS_PARAM, .help="How many concurrent requests should we send (default is 1000)", .tag="concurrency"},
         {.short_option='p', .long_option = "port", .has_param = HAS_PARAM, .help="Resolver port number to send the query to (default 53)", .tag="port"},
         {.short_option='o', .long_option = "output", .has_param = HAS_PARAM, .help="Output file name (default is the terminal with stdout)", .tag="output"},
         {.short_option='e', .long_option = "error", .has_param = HAS_PARAM, .help="where to write the error (default is terminal with stderr)", .tag="error"},
@@ -1325,7 +1685,7 @@ PARG_CMDLINE create_command_line_arguments(){
         {.short_option=0, .long_option = "server-mode", .has_param = NO_PARAM, .help="Run bulkDNS in server mode", .tag="server_mode"},
         {.short_option=0, .long_option= "lua-script", .has_param = HAS_PARAM, .help="Lua script to be used either for scan or server mode", .tag="lua_file"},
         {.short_option=0, .long_option="bind-ip", .has_param = HAS_PARAM, .help="IP address to bind to in server mode (default 127.0.0.1)", .tag="bind_ip"},
-        {.short_option=0, .long_option="timeout", .has_param = HAS_PARAM, .help="Timeout of the socket (default is 3 seconds)", .tag="timeout"},
+        {.short_option=0, .long_option="timeout", .has_param = HAS_PARAM, .help="Timeout of the socket (default is 5 seconds)", .tag="timeout"},
         {.short_option=0, .long_option = "", .has_param = NO_PARAM, .help="", .tag=NULL}
     };
     // let's copy it
@@ -1369,17 +1729,17 @@ void get_command_line(PARG_PARSED_ARGS pargs, struct scanner_input * si){
     if (arg_is_tag_set(pargs, "timeout")){
         si->timeout = (unsigned int)atoi(arg_get_tag_value(pargs, "timeout"));
     }else{
-        si->timeout = 3;
+        si->timeout = 5;
     }
     si->rr_type = convert_type_to_int((char*)(arg_is_tag_set(pargs, "rr_type")?arg_get_tag_value(pargs, "rr_type"):"A"));
     si->rr_class = convert_class_to_int((char*)(arg_is_tag_set(pargs, "rr_class")?arg_get_tag_value(pargs, "rr_class"):"IN"));
     si->help = arg_is_tag_set(pargs, "print_help")?1:0;
     si->output_file = (char*)(arg_is_tag_set(pargs, "output")?arg_get_tag_value(pargs, "output"):NULL);
     si->output_error = (char*)(arg_is_tag_set(pargs, "error")?arg_get_tag_value(pargs, "error"):NULL);
-    if (arg_is_tag_set(pargs, "threads")){
-        si->threads = (unsigned int)atoi(arg_get_tag_value(pargs, "threads"));
+    if (arg_is_tag_set(pargs, "concurrency")){
+        si->concurrency = (unsigned int)atoi(arg_get_tag_value(pargs, "concurrency"));
     }else{
-        si->threads = 300;
+        si->concurrency = 1000;
     }
     si->server_mode = arg_is_tag_set(pargs, "server_mode")?1:0;
     if (arg_is_tag_set(pargs, "lua_file")){
@@ -1388,7 +1748,11 @@ void get_command_line(PARG_PARSED_ARGS pargs, struct scanner_input * si){
     if (arg_is_tag_set(pargs, "bind_ip")){
         si->bind_ip = strdup(arg_get_tag_value(pargs, "bind_ip"));
     }else{
-        si->bind_ip = strdup("127.0.0.1");
+        if (si->server_mode == 1){
+            si->bind_ip = strdup("127.0.0.1");
+        }else{
+            si->bind_ip = strdup("0.0.0.0");
+        }
     }
 }
 
