@@ -270,3 +270,6 @@ In the above example the `cpu` is the hex represantation of `some-kinda-cpu` and
    - No. The resolver must be an IPv4 address. We pass this value to `inet_addr()` function which accepts an IPv4.
 4. How fast it can scan domain names?
    - It highly depends on your network and the (remote) resolver you use.
+5. Why scanning one domain name takes much time?
+   - bulkDNS designed to be used for large-scale measurement. At the time of initialization, it launches dozens of threads in the memory. Therefore,
+   it's not suitable for scanning one domain name. You can use dig for that!
