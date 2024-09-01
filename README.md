@@ -199,7 +199,7 @@ We try to keep the output as close as possible to DNS RFC standards.
 
 #### A note on threads and concurrency
 
-* bulkDNS is capable of scanning 1,000,000 (1M) domain names in around 5 minutes with less than 1% of errors using default number of threads (300). That means you can
+* bulkDNS is capable of scanning 1,000,000 (1M) domain names in around 5 minutes with less than 1% of errors using default number of threads (1000). That means you can
 scan the whole domain name system in less than one day.
 This makes it probably the most practical (and maybe fastest) DNS scanner. It does not have any requirements in terms of CPU or RAM. As all other network scanners,
 the bottleneck is always the network bandwidth, firewalls and the remote recursive resolver. We recommend using Cloudflare quad one (1.1.1.1) as the resolver since 
