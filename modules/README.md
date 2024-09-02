@@ -6,11 +6,11 @@ a module for a customized scan scenarios using Lua and bulkDNS. Before writing m
 need to make sure to compile bulkDNS with Lua (using `make with-lua', by following the instruction in the main README file.)
 
 * [How to write a module for customized scan scenarios](#How-to-write-a-module-for-customized-scan-scenarios)
-    * [First example: find NXdomains](#First-example--find-NXdomains)
-    * [Second example: SPF scanner](#Second-example--SPF-scanner)
+    * [First example: find NXdomains](#First-example-find-NXdomains)
+    * [Second example: SPF scanner](#Second-example-SPF-scanner)
 * [Running bulkDNS in Server mode](#Running-bulkDNS-in-Server-mode)
-    * [First example: Creating a DNS forwarder](#First-example--Creating-a-DNS-forwarder)
-    * [Second example: Creating an authoritative name server](#Second-example--Creating-an-authoritative-name-server)
+    * [First example: Creating a DNS forwarder](#First-example-Creating-a-DNS-forwarder)
+    * [Second example: Creating an authoritative name server](#Second-example-Creating-an-authoritative-name-server)
 
 ### How to write a module for customized scan scenarios
 
