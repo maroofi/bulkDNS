@@ -18,6 +18,8 @@ The output of bulkDNS is a detailed JSON structure (example at the end of the pa
 	* [A note on threads and concurrency](#A-note-on-threads-and-concurrency)
 	* [A note on names and conventions](#Names-and-output-convention)
    	* [Hex representation of the output](#Hex-represantaion-of-the-output)
+* [Using Lua for customized scan scenario](#Using-Lua-for-customized-scan-scenario)
+* [Running bulkDNS in server mode](#Running-bulkDNS-in-server-mode)
 * [FAQ](#FAQ)
  	
 
@@ -79,7 +81,7 @@ make with-lua
 The compiled output is inside the `bin` directory.
 
 In case the `pkg-config` commands gives you a different output for Lua headers and library locations, then 
-you must specify the values in the make file like this:
+you must specify the values when running `make` command like this:
 
 ```bash
 make LUALIB=<your-lua-lib-name> LUAINCDIR=<your-path-to-lua-include-dir> with-lua
@@ -203,7 +205,7 @@ We try to keep the output as close as possible to DNS RFC standards.
 scan the whole domain name system in less than one day.
 This makes it probably the most practical (and maybe fastest) DNS scanner. It does not have any requirements in terms of CPU or RAM. As all other network scanners,
 the bottleneck is always the network bandwidth, firewalls and the remote recursive resolver. We recommend using Cloudflare quad one (1.1.1.1) as the resolver since 
-it has no limit in terms of the number of queries. However, you can also run your own recursive resolver to do the job. If you decrease the number of threads, you can
+it has no limit in terms of the number of queries. However, you can also run your own recursive resolver to do the job. If you decrease the concurrency, you can
 also use google quad-eight (8.8.8.8) which has 1,500 queries/second limit.
 
 * Using `--concurrency` option, you can increase or decrease the number of concurrent requests based on your network and your experience. It's important to note that if you set `--concurrency=1000`, it means you ask for openning 1,000
@@ -258,6 +260,19 @@ answer
 
 In the above example the `cpu` is the hex represantation of `some-kinda-cpu` and os is the hex represantation of `some-kinda-os`.
 
+### Using Lua for customized scan scenario
+
+Using bulkDNS, you can write your own modules to perform any type of scan. The [modules](./modules) directory contains
+a tutorial on how to create a custom scan module along with several examples. To use this feature, you must compile bulkDNS
+with Lua library.
+
+### Running bulkDNS in server mode
+
+bulkDNS is not just a scanner. You can also run it in server mode by passing `--server-mode` switch. 
+If you want to run bulkDNS in server mode, you must compile it with Lua library.
+In the server mode, bulkDNS acts like a DNS server. A complete tutorial provided in [modules](./modules) directory
+along with examples.
+
 
 ### FAQ
 1. Why another scanner?
@@ -266,7 +281,7 @@ In the above example the `cpu` is the hex represantation of `some-kinda-cpu` and
    - I don't know CMake
 2. Is there any similar project like this?
    - The only comparable project to this one (that I'm aware of) is zmap/zdns. 
-3. Can I pass a domain name (e.g., `ns1.google.com` as the resolver)?
+3. Can I pass a domain name (e.g., `ns1.google.com`) as the resolver?
    - No. The resolver must be an IPv4 address. We pass this value to `inet_addr()` function which accepts an IPv4.
 4. How fast it can scan domain names?
    - It highly depends on your network and the (remote) resolver you use.
