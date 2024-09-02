@@ -5,6 +5,13 @@ bulkDNS modules are written in Lua programming language. This tutorial shows how
 a module for a customized scan scenarios using Lua and bulkDNS. Before writing modules, you
 need to make sure to compile bulkDNS with Lua (using `make with-lua', by following the instruction in the main README file.)
 
+* [How to write a module for customized scan scenarios](#How-to-write-a-module-for-customized-scan-scenarios)
+    * [First example: find NXdomains](#First-example:-find-NXdomains)
+    * [Second example: SPF scanner](#Second-example:-SPF-scanner)
+* [Running bulkDNS in Server mode](#Running-bulkDNS-in-Server-mode)
+    * [First example: Creating a DNS forwarder](#First-example:-Creating-a-DNS-forwarder)
+    * [Second example: Creating an authoritative name server](Second-example:-Creating-an-authoritative-name-server)
+
 ### How to write a module for customized scan scenarios
 
 BulkDNS accepts a Lua script file using the switch `--lua-script`. After launching the scanner, each 
@@ -274,6 +281,8 @@ Each time the client ask for something, the bulkDNS thread will call the
 `main` function in Lua script and return the response back to the client and
 log the data in the output.
 
+#### First example: Creating a DNS forwarder
+
 Let's write a simple DNS forwarder as an example. Here is the explanation of Digicert
 about DNS forwarder in case you don't know what it is:
 [DNS forwarder](https://www.digicert.com/blog/understanding-dns-forwarding).
@@ -360,7 +369,9 @@ Something like this would work:
 iptables -t nat -I PREROUTING -p udp --dport 53 -j DNAT --to PUBLICIP:5300
 ```
 
-Now let's another poor example of an authorative server: Let's say we want to manage
+#### Second example: Creating an authoritative name server
+
+Now let's see another poor example of an authorative server: Let's say we want to manage
 our own DNS server for a domain name. Our domain name is `example.com` and we want
 to serve our IP address for this domain which is `1.2.3.4`. we have the same IP address
 for our name-server which is `ns1.example.com`.
