@@ -198,7 +198,7 @@ And run it like:
 ./bulkdns --lua-script=spfscanner.lua --concurrency=10 input_file.txt
 ```
 
-I am using the json library from [here](https://github.com/rxi/json.lua). I sotred it in the module directory.
+I am using the json library from [here](https://github.com/rxi/json.lua). I stored it in the module directory.
 
 
 You can find more modules in this directory and all are documented.
