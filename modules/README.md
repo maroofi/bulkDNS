@@ -36,7 +36,7 @@ Therefore, here is the structure of the Lua script you pass to bulkDNS.
 
 
     function main(input_line)
-        -- input_line: one of the entries of the input file
+        -- input_line: one of the entries of the input file or nil (only for the last call)
         -- you passed to bulkDNS
 
         -- body of the function
@@ -53,6 +53,10 @@ It's also very important to note that whatever global variable you define in you
 until the end of the scan. This is on purpose! In this way, you can keep the states for different entries 
 and have a dynamic scan. For examle, one use-case of this feature is to implement a global LRU DNS cache in your Lua file!
 
+When there is no more entry for scan, the C code will call the Lua 'main' function for the last time by passing `nil` to the
+main function. With this last call, the Lua script knows that it's time to save global variables or do whatever you want since
+there won't be any other call to. 
+
 #### First example: find NXdomains
 
 Here is the scan scenario: I have a list of domain names and I want to output only those with DNS response code of NXDomain.
@@ -66,6 +70,9 @@ local sdns = require("libsdns")
 assert(sdns)
 
 function main(line)
+    -- we don't care about the last call as we don't have global vars
+    if line == nil then return nil end
+
     -- create a query packet
     local query = sdns.create_query(line, "A", "IN")
     -- make sure the query packet created successfully
@@ -156,6 +163,7 @@ local json_encode = json.encode
 local insert = table.insert
 
 function main(line)
+    if line == nil then return nil end
     local query = sdns.create_query(line, "TXT", "IN")
     if query == nil then return nil end
     tbl_send = {dstport=53, timeout=3, dstip="1.1.1.1"}
