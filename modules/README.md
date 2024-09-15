@@ -55,7 +55,7 @@ and have a dynamic scan. For examle, one use-case of this feature is to implemen
 
 When there is no more entry for scan, the C code will call the Lua 'main' function for the last time by passing `nil` to the
 main function. With this last call, the Lua script knows that it's time to save global variables or do whatever you want since
-there won't be any other call to. 
+there won't be any other call to this Lua script. 
 
 #### First example: find NXdomains
 
