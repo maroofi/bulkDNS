@@ -788,6 +788,10 @@ void * scan_lua_worker_routine(void * ptr){
         }
         if (strcmp((char*) item, tp->quit_data) == 0){
             //fprintf(stderr, "We have received a quit message in thread#%ld\n", pthread_self());
+            // let's call the lua script for the last time but pass nil instead
+            // this is very usefull for the lua file to know the last call
+            lua_settop (L, 0);
+            lua_dns_routine_scan(NULL, si, L);
             lua_close(L);
             return NULL;
         }
@@ -808,7 +812,11 @@ void lua_dns_routine_scan(void * item, struct scanner_input * si, lua_State * L)
         fprintf(stdout, "No 'main' function detected in Lua script\n");
         return;
     }
-    lua_pushstring(L, (char*)item);
+    if (NULL == item){
+        lua_pushnil(L);
+    }else{
+        lua_pushstring(L, (char*)item);
+    }
     size_t str_len;
     int res = lua_pcall(L, 1, 1, 0);
     if (res != 0){
