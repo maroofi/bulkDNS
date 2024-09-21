@@ -38,6 +38,7 @@ struct scanner_input {
     unsigned int server_mode;       // should we work in server mode instead of active scan
     char * lua_file;                // Lua file to use either in server mode or custom scan
     char * bind_ip;                 // this is the IP address we want to bind to in server-mode
+    int no_tcp;                     // should we run TCP server (1 which is default) or not (0)
 };
 
 struct thread_param {
@@ -66,6 +67,7 @@ typedef struct {
 
 typedef struct {
     pthread_mutex_t * mutex_queue;
+    pthread_cond_t * cond_queue;
     int sockfd;
     cqueue_ctx * queue_handle;
     char * lua_file;
@@ -75,6 +77,7 @@ typedef struct{
     char * ip;
     uint16_t port;
     char * lua_file;
+    int run_tcp_server;         // 1 means we should run and 0 means no TCP server
 } server_mode_server_param;
 
 typedef struct{

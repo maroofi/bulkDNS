@@ -1255,6 +1255,7 @@ void * smode_func_sender_tcp(void * data){
     
     while(1){
         pthread_mutex_lock(tp->mutex_queue);
+        pthread_cond_wait(tp->cond_queue, tp->mutex_queue);
         to_consume = cqueue_get(tp->queue_handle);
         if (NULL == to_consume){  // queue is empty
             pthread_mutex_unlock(tp->mutex_queue);
@@ -1337,6 +1338,7 @@ void * smode_func_receiver_tcp(void * data){
         pthread_mutex_lock(tp->mutex_queue);
         cqueue_put(tp->queue_handle, (void*)qd);
         pthread_mutex_unlock(tp->mutex_queue);
+        pthread_cond_signal(tp->cond_queue);
         // init another queue data
         qd = init_server_mode_queue_data();
     }
@@ -1547,13 +1549,16 @@ void * server_mode_run_tcp(void * param){
     
     // create a lock for the queue (two threads going to have access to our queue)
     pthread_mutex_t * mutex_queue = bulkdns_malloc_or_abort(sizeof(pthread_mutex_t));
+    pthread_cond_t * cond_queue = bulkdns_malloc_or_abort(sizeof(pthread_cond_t));
     
     // abort if we can not create a mutex
     if (pthread_mutex_init(mutex_queue, NULL) != 0)
         abort();
-     
+    if (pthread_cond_init(cond_queue, NULL) != 0)
+        abort();
     // this what we pass as the parameter to both threads
-    server_mode_thread_params tp = {.queue_handle  = queue_handle, .mutex_queue = mutex_queue, .sockfd=sockfd, .lua_file=smsp->lua_file};
+    server_mode_thread_params tp = {.queue_handle  = queue_handle, .mutex_queue = mutex_queue,
+                                    .sockfd=sockfd, .lua_file=smsp->lua_file, .cond_queue = cond_queue};
 
 
     // now we create one thread: for reading the queue constantly, fetching the data,
@@ -1570,13 +1575,17 @@ void * server_mode_run_tcp(void * param){
 }
 
 void server_mode_run_all(server_mode_server_param *smsp){
-    pid_t newpid = fork();
-    if (newpid == 0){   // this is the child where we run TCP mode
-        server_mode_run_tcp((void*)smsp);
-    }else if (newpid > 0){  // this is parent where we run UDP mode
+    if (smsp->run_tcp_server){
+        pid_t newpid = fork();
+        if (newpid == 0){   // this is the child where we run TCP mode
+            server_mode_run_tcp((void*)smsp);
+        }else if (newpid > 0){  // this is parent where we run UDP mode
+            server_mode_run_udp((void*)smsp);
+        }else{      // this is error where we should never reach
+            exit(0);
+        }
+    }else{  // user asked for only UDP.
         server_mode_run_udp((void*)smsp);
-    }else{      // this is error where we should never reach
-        exit(0);
     }
 }
 
@@ -1584,7 +1593,9 @@ void switch_server_mode(struct scanner_input * si){
 #ifdef COMPILE_WITH_LUA
     // first connect the signal handler
     signal(SIGINT, sig_int_handler);
-    server_mode_server_param p = {.ip = si->bind_ip, .port=si->port, .lua_file=si->lua_file};
+    
+    server_mode_server_param p = {.ip = si->bind_ip, .port=si->port,
+                                  .lua_file=si->lua_file, .run_tcp_server=si->no_tcp ^ 1};
     server_mode_run_all(&p);
 #else
     fprintf(stderr, "ERROR: You need to compile the code with Lua to use the server mode\n");
@@ -1694,6 +1705,7 @@ PARG_CMDLINE create_command_line_arguments(){
         {.short_option=0, .long_option= "lua-script", .has_param = HAS_PARAM, .help="Lua script to be used either for scan or server mode", .tag="lua_file"},
         {.short_option=0, .long_option="bind-ip", .has_param = HAS_PARAM, .help="IP address to bind to in server mode (default 127.0.0.1)", .tag="bind_ip"},
         {.short_option=0, .long_option="timeout", .has_param = HAS_PARAM, .help="Timeout of the socket (default is 5 seconds)", .tag="timeout"},
+        {.short_option=0, .long_option="no-tcp", .has_param = NO_PARAM, .help="Run the server-mode only for UDP (No TCP listening)", .tag="no_tcp"},
         {.short_option=0, .long_option = "", .has_param = NO_PARAM, .help="", .tag=NULL}
     };
     // let's copy it
@@ -1725,6 +1737,7 @@ PARG_CMDLINE create_command_line_arguments(){
 
 void get_command_line(PARG_PARSED_ARGS pargs, struct scanner_input * si){
     si->udp_only = arg_is_tag_set(pargs, "udp_only")?1:0;
+    si->no_tcp = arg_is_tag_set(pargs, "no_tcp")?1:0;
     si->set_do  = arg_is_tag_set(pargs, "set_do")?1:0;
     si->set_nsid  = arg_is_tag_set(pargs, "set_nsid")?1:0;
     si->no_edns = arg_is_tag_set(pargs, "noedns")?1:0;
