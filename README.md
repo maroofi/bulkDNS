@@ -11,6 +11,7 @@ The output of bulkDNS is a detailed JSON structure (example at the end of the pa
 * [How to compile bulkDNS](#How-to-compile)
     * [Compile without Lua](#Compile-without-Lua)
     * [Compile with Lua for customized scan scenarios](#Compile-with-Lua-for-customized-scan-scenarios)
+* [Benchmark - Comparison of bulkDNS with ZDNS, massDNS](#Benchmark)
 * [Supported Resource Records (RRs)](#Supported-Resource-Records)
 * [List of Switches](#List-of-Switches)
 * [Example Output](#Example-Output)
@@ -89,6 +90,39 @@ make LUALIB=<your-lua-lib-name> LUAINCDIR=<your-path-to-lua-include-dir> with-lu
 
 That's all!
 
+### Benchmark
+
+To compare bulkDNS with ZDNS and massDNS, we use the cheapest Hetzner VPS (CX22), with 2 virtual (Intel) core and 4 GB of RAM and 40 GB of SSD disk space located in Germany with one IPv4.
+We locally installed PowerDNS and send all the queries to our local resolver (it's not fair to use public recursive resolver like 1.1.1.1 as it puts a lot of pressure).
+Here is the result of the comparison: We perform the tests on two datasets: 1) Top 1 million domains names of Cloudflare and 2) 10 million domain names randomly selected from all TLDs.
+
+|#|Tool|DB size|Time|Success Ratio|Resource Record|
+|---|---|-------|-----|-------------|-------------|
+|1| ZDNS|1M|4m59s|99.45%|A Record|
+|2|bulkDNS|1M|4m32s|99.99%|A Record|
+|3|massDNS|1M|6m33s|99.51%|A Record|
+|4|bulkDNS+Lua|1M|5m32s|99.47%|A Record|
+|-|-----------|--|----|-----|---------|
+|5|ZDNS|1M|5m15s|98.57%|TXT Record|
+|6|bulkDNS|1M|7m12s|99.99%|TXT Record|
+|7|massDNS|1M|6m57s|99.26%|TXT Record|
+|8|bulkDNS+Lua|1M|5m59s|99.03%|TXT Record|
+
+And here is the result for 10M randomly selected domain names from All TLDs:
+
+|#|Tool|DB size|Time|Success Ratio|Resource Record|
+|---|---|-------|-----|-------------|-------------|
+|1|ZDNS|10M|55m3s|99.75%|A Record|
+|2|bulkDNS|10M|49m43s|99.99|A Record|
+|3|massDNS|10M|68m44s|95.98%|A Record|
+|4|bulkDNS+Lua|10M|60m45s|99.70%|A Record|
+
+1. All the times are wall clock time.
+2. The success rate is calculated based on the answers we get from the server.
+3. Due to the different architecture of the tools, we tried to launch each tool based on its options and switches in a way that it sends 1,000 concurrent requests.
+4. We set the timeout of all experiments to 3 seconds (default option for each tool is different for example, ZDNS has the default option of 15 seconds).
+5. We used the default output option of each tool (some tools like massDNS supports several output options).
+6. Cloudflare domain ranking list can be downloaded from [here](https://radar.cloudflare.com/domains)
 
 ### Supported Resource Records
 
