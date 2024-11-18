@@ -305,7 +305,7 @@ with Lua library.
 bulkDNS is not just a scanner. You can also run it in server mode by passing `--server-mode` switch. 
 If you want to run bulkDNS in server mode, you must compile it with Lua library.
 In the server mode, bulkDNS acts like a DNS server. A complete tutorial provided in [modules](./modules) directory
-along with examples.
+along with examples. For example, [URLAbuse DNSBL](https://dbl.urlabuse.com) is running on top of bulkDNS server mode.
 
 
 ### FAQ
