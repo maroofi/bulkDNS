@@ -2,7 +2,7 @@
 
 ### bulkDNS: A fast DNS scanner for large-scale Internet measurement
 
-Using **bulkDNS**, you can scan millions of domain names in a few minutes. The scanner has been designed to be fast with a very small footprint. It also supports customized scan scenarios through Lua scripting.
+Using **bulkDNS**, you can scan millions of domain names in a few minutes. The scanner has been designed to be fast with a very small footprint. It also supports customized scan scenarios through Lua scripting. Check our [benchmark](#Benchmark) to compare it with other scanners.
 
 The output of bulkDNS is a detailed JSON structure (example at the end of the page) which can be parsed both by command-line (e.g., by `jq`) or any programming language.
 
