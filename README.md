@@ -113,7 +113,7 @@ And here is the result for 10M randomly selected domain names from All TLDs:
 |#|Tool|DB size|Time|Success Ratio|Resource Record|
 |---|---|-------|-----|-------------|-------------|
 |1|ZDNS|10M|55m3s|99.75%|A Record|
-|2|bulkDNS|10M|49m43s|99.99|A Record|
+|2|bulkDNS|10M|49m43s|99.99%|A Record|
 |3|massDNS|10M|68m44s|95.98%|A Record|
 |4|bulkDNS+Lua|10M|60m45s|99.70%|A Record|
 
