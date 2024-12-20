@@ -346,6 +346,9 @@ void arg_show_help(PARG_CMDLINE cmd, int argc, char ** argv){
     fprintf(stdout, "\t--server-mode\t\t\t\t");
     fprintf(stdout, "Run bulkDNS in server mode\n");
 
+    fprintf(stdout, "\t--no-tcp\t\t\t\t");
+    fprintf(stdout, "Run the server-mode only for UDP (No TCP listening)\n");
+
     fprintf(stdout, "\t-h, --help\t\t\t\t");
     fprintf(stdout, "Print this help message\n");
 

@@ -170,6 +170,7 @@ Bulk DNS scanner based on sdns low-level DNS library.
 	--set-nsid			The packet has NSID in edns0
 	--noedns			Do not support EDNS0 in queries (Default supports EDNS0)
 	--server-mode			Run bulkDNS in server mode
+        --no-tcp                        Run the server-mode only for UDP (No TCP listening)
 	-h, --help			Print this help message
 
 bulkDNS currently supports the following RRs:
