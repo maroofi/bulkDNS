@@ -12,18 +12,19 @@
 -- License: MIT
 -- Author: S.MAROOFI
 
-local sdns = require("libsdns")         -- you have it if you are using bulkDNS
+local sdns = require("libsdns")         -- you have it if you are using bulkDNS (https://github.com/maroofi/sdns)
 local inspect = require("inspect")      -- luarocks --local install inspect
 local json = require("json")            -- I have it in this directory
-local psl = require("psl")              -- luarocks --local install psl
+local psl = require("libctld")              -- make libctld on your git (https://github.com/maroofi/libctld)
 
 -- keeps the name-servers IP address. Serves as a cache system
 -- since we keep the Lua state in C code
 local nameservers = {}
 
 -- to extract the registrable domain name from nameserver
+-- dowload psl.dat from https://publicsuffix.org/list/public_suffix_list.dat
 -- ns1.google.com -> google.com
-local p = psl.builtin()
+local p = psl.init("psl.dat")
 assert(p)
 
 -- split function to get the suffix
@@ -55,7 +56,7 @@ function main(line)
         -- find the nameserver and add it to global variable
         local query = sdns.create_query(tld, "NS", "IN")
         query = sdns.to_network(query)
-        to_send = {dstport=53, dstip="1.1.1.1", timeout=2, to_send=query}
+        to_send = {dstport=5300, dstip="127.0.0.1", timeout=2, to_send=query}
         local result = sdns.send_udp(to_send)
         if result == nil then return nil end
         result = sdns.from_network(result)
@@ -104,23 +105,59 @@ function main(line)
     local header = sdns.get_header(result)
     if header.rcode ~= 0 then return nil end
     if header.nscount < 1 then return nil end
-    local firstns = sdns.get_authority(result, 1)
-    firstns = ((firstns or {}).rdata or {}).nsname or nil
-    if firstns == nil then return nil end
-    firstns_rd = p:registrable_domain(firstns)
-    if firstns_rd == nil then return nil end
-    query = sdns.create_query(firstns_rd, "SOA", "IN")
-    query = sdns.to_network(query)
-    if query == nil then return nil end
-    to_send.to_send = query
-    to_send.dstip = "1.1.1.1"
-    result = sdns.send_udp(to_send)
-    if result == nil then return nil end
-    result = sdns.from_network(result)
-    if result == nil then return nil end
-    header = sdns.get_header(result)
-    if header.rcode ~= nil and header.rcode == 3 then
-        return json.encode({ns=firstns, domain=line})
+    
+    local final_ns_result_lame = {}
+    local final_ns_not_parsable = {}
+    local final_ns_result_healthy = {}
+    for idx=1,header.nscount do
+        local targetns = sdns.get_authority(result, idx)
+        targetns = ((targetns or {}).rdata or {}).nsname or nil
+        if targetns == nil then goto continue_nscount end
+        -- first, query the A record of the NS (fqdn) to see you get nx or not
+        -- if it's not nx, we don't continue
+        query = sdns.create_query(targetns, "A", "IN")
+        query = sdns.to_network(query)
+        if query == nil then goto continue_nscount end
+        to_send.to_send = query
+        to_send.dstip = "127.0.0.1"
+        to_send.dstport = 5300
+        local result_query = sdns.send_udp(to_send)
+        if result_query == nil then goto continue_nscount end
+        result_query = sdns.from_network(result_query)
+        if result_query == nil then goto continue_nscount end
+        result_header = sdns.get_header(result_query)
+        if (not result_header) or (result_header.rcode == nil) or (result_header.rcode ~= 3) then
+            final_ns_result_healthy[#final_ns_result_healthy +1 ] = targetns
+            goto continue_nscount
+        end
+        -- now that the real ns returns nxdomain, we can check if the domain is registerd or not?
+        targetns_rd = psl.parse(p, targetns, 1)
+        targetns_rd = (targetns_rd or {}).registered_domain or nil
+        if targetns_rd == nil then
+            final_ns_not_parsable[#final_ns_not_parsable + 1] = targetns
+            goto continue_nscount
+        end
+        query = sdns.create_query(targetns_rd, "A", "IN")
+        query = sdns.to_network(query)
+        if query == nil then goto continue_nscount end
+        to_send.to_send = query
+        to_send.dstip = "127.0.0.1"
+        to_send.dstport = 5300
+        result_query = sdns.send_udp(to_send)
+        if result_query == nil then goto continue_nscount end
+        result_query = sdns.from_network(result_query)
+        if result_query == nil then goto continue_nscount end
+        result_header = sdns.get_header(result_query)
+        if result_header and result_header.rcode ~= nil and result_header.rcode == 3 then
+            final_ns_result_lame[#final_ns_result_lame + 1] = targetns
+        end
+        if result_header and result_header.rcode ~= nil and result_header.rcode == 0 then
+            final_ns_result_healthy[#final_ns_result_healthy + 1] = targetns
+        end
+        ::continue_nscount::
+    end
+    if #final_ns_result_lame > 0  or #final_ns_not_parsable > 0 then
+        return json.encode({lame={nxresult=final_ns_result_lame, syntax=final_ns_not_parsable}, healthy=final_ns_result_healthy, domain=line})
     end
     return nil
 end
