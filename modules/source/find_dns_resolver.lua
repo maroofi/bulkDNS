@@ -1,3 +1,14 @@
+-- Send a packet to different IP addresses to check if they are resolvers or not.
+-- you need json.lua in the same directory.
+-- you also need to have sdns (https://github.com/maroofi/sdns) compiled with lua as a library in $LIB dir or current directory.
+-- currently, the sample domain is `digikala.ir`, but you can change it to whatever you want or even make it randomly.
+-- how to use: bulkdns --lua-script=find_dns_resolver.lua <input-IP-list-file>
+-- <input-IP-list-file>: is a file with one IP address per line.
+-- The scanner is fast, capable of scanning millions of IPs in hours.
+-- it scans for UDP(53), you can simply change it to TCP(53).
+-- read the LUA API doc here: https://github.com/maroofi/sdns/blob/main/lua/DOCLUASDNS.md
+-- The script will print out the working IP addresses.
+
 local json = require "json"
 local sdns = require "libsdns"
 
